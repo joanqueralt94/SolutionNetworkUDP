@@ -10,8 +10,9 @@ using namespace std;
 #define MAX_PLAYERS 2
 #define COUNTDOWN 30
 #define PLAYER_SIZE_COLLISION 100
+#define IDCritPacketWelcome 12
 
-
+int idCritPacket = 0;
 GAME_STATE gamestate = GAME_STATE::PENDING;
 
 void AddClient(vector<Client*> *clients, sf::IpAddress ip, unsigned short port)
@@ -82,15 +83,22 @@ void SendMoveACK(int id, int x, int y, sf::UdpSocket* socket, std::vector<Client
 	}
 }
 
-void SendStartGame(sf::UdpSocket* socket, std::vector<Client*> clients)
+void SendStartGame(sf::UdpSocket* socket, std::vector<Client*> clients, std::vector<critPack*> *critPackets)
 {
 	gamestate = GAME_STATE::GAME;
 	sf::Packet packet;
 	CMD_TYPE CMD = CMD_TYPE::START;
 	int countdown = COUNTDOWN;
-	packet << CMD << countdown;
+	
 	for (int i = 0; i < clients.size(); i++)
 	{
+		idCritPacket = idCritPacket + i;
+		packet << CMD << countdown << idCritPacket;
+		critPack* tempCritPacket = new critPack;
+		tempCritPacket->ID = idCritPacket;
+		tempCritPacket->packet = packet;
+		critPackets->push_back(tempCritPacket);
+
 		sf::Socket::Status status = socket->send(packet, clients[i]->IP, clients[i]->PORT); //Enviem un missatge a cada client que tenim guardat, amb la seva IP i el seu PORT
 		if (status != sf::Socket::Status::Done)
 		{
@@ -161,7 +169,7 @@ void ChangeID(std::vector<Client*> clients, int id)
 }
 
 
-void checkMSG(sf::Packet packet, std::vector<Client*> clients, sf::UdpSocket* socket,sf::IpAddress senderIP, unsigned short senderPort, float* counter1, float* counter2) {
+void checkMSG(sf::Packet packet, std::vector<Client*> clients, sf::UdpSocket* socket,sf::IpAddress senderIP, unsigned short senderPort, float* counter1, float* counter2, std::vector<critPack*> *critPackets) {
 	
 	CMD_TYPE CMD;
 	packet >> CMD;
@@ -171,8 +179,6 @@ void checkMSG(sf::Packet packet, std::vector<Client*> clients, sf::UdpSocket* so
 		int ID;
 		packet >> ID;
 		SendChallenge(socket, senderIP, senderPort);
-		
-		
 		break;
 	}
 	case CMD_TYPE::CHALLENGE_R: {
@@ -180,14 +186,13 @@ void checkMSG(sf::Packet packet, std::vector<Client*> clients, sf::UdpSocket* so
 		std::cout << available << std::endl;
 		SendWelcome(available, socket, clients);
 		ChangeID(clients, available);
-
 		break;
 	}
 
 	case CMD_TYPE::BYE: {
 		int ID;
 		packet >> ID;
-		cout << "The ID from the player that disconnect is : "<< ID << endl;
+		cout << "The ID from the player that disconnect is : " << ID << endl;
 		RemoveClient(&clients, ID - 1);
 		SendKill(ID, socket, clients);
 		break;
@@ -196,70 +201,113 @@ void checkMSG(sf::Packet packet, std::vector<Client*> clients, sf::UdpSocket* so
 		int ID, tempX, tempY;
 		packet >> ID >> tempX >> tempY;
 
-		//int rivalX, rivalY;
+		bool colX = false;
+		bool colY = false;
 
-		//for (int i = 0; i < clients.size(); i++)
-		//{
-		//	if (clients[i]->ID == ID)
-		//	{
-		//		clients[i]->x = tempX;
-		//		clients[i]->y = tempY;
-		//	}
-		//	else
-		//	{
-		//		rivalX = clients[i]->x;
-		//		rivalY = clients[i]->y;
+		int rivalX, rivalY;
 
-		//	}
+		for (int i = 0; i < clients.size(); i++)
+		{
+			if (clients[i]->ID == ID)
+			{
+				clients[i]->x = tempX;
+				clients[i]->y = tempY;
+			}
+			else
+			{
+				rivalX = clients[i]->x;
+				rivalY = clients[i]->y;
 
-		//}
+			}
 
-		//for (int i = 0; i < clients.size(); i++)
-		//{
-		//	if (clients[i]->ID == ID)
-		//	{
-		//		if (((clients[i]->x < rivalX + PLAYER_SIZE_COLLISION) && (clients[i]->x > rivalX)) &&
-		//			((clients[i]->y <= rivalY + PLAYER_SIZE_COLLISION) && (clients[i]->y > rivalY)))
-		//		{
-		//			cout << "COLISION" << endl;
-		//		}
-		//		else
-		//		{
-		//			//SendMoveACK(ID, tempX, tempY, socket, clients);
-		//		}
-		//	}
-		//}		
+		}
 
+		for (int i = 0; i < clients.size(); i++)
+		{
+			if (clients[i]->ID == ID)
+			{
+				if ((clients[i]->x < rivalX + PLAYER_SIZE_COLLISION) && (clients[i]->x > rivalX))
+				{
+					//cout << "COLLISION on X" << endl;
+					colX = true;
+				}
+				else colX = false;
 
+				if ((clients[i]->y <= rivalY + PLAYER_SIZE_COLLISION) && (clients[i]->y > rivalY))
+				{
+					//cout << "COLISION on Y" << endl;
+					colY = true;
+				}
+				else colY = false;
+
+			}
+		}
+
+		if (colX && colY)
+		{
+			cout << "Colision Total" << endl;
+		}
+		else
+		{
+			SendMoveACK(ID, tempX, tempY, socket, clients);
+		}
 		//cout << "ID player : " << ID << "amb valor X " << tempX << " i valor Y " << tempY << endl;
-		SendMoveACK(ID, tempX, tempY, socket, clients);
+		//SendMoveACK(ID, tempX, tempY, socket, clients);
 
 		break;
 	}
 	case CMD_TYPE::RESTART: {
-		
+
 		cout << "Restarting the Game" << endl;
-		SendStartGame(socket, clients);
+		SendStartGame(socket, clients, critPackets);
 
 		break;
 	}
 	case CMD_TYPE::PING: {
 		int ID;
 		packet >> ID;
-		
+
 		if (ID == 1)
 		{
 			cout << "RTT from Player 1 is: " << *counter1 << " ms" << endl;
+			//if (*counter1 > 1000) SendKill(ID, socket, clients);
+
 			*counter1 = 0;
 		}
 		else if (ID == 2)
 		{
 			cout << "RTT from Player 2 is: " << *counter2 << " ms" << endl;
+			//if (*counter2 > 1000) SendKill(ID, socket, clients);
 			*counter2 = 0;
 		}
 		//cout << "Rebo PING de Player " << ID << endl;
 		SendPong(socket, clients);
 		break;
+	}
+	case CMD_TYPE::ACK:
+	{
+		sf::Clock critClock;
+		sf::Packet packet;
+		int idTempCrit;
+		packet >> idTempCrit;
+		
+		int idCrit = IDCritPacketWelcome;
+		for (int i = 0; i < critPackets->size(); i++)
+		{
+			if (idTempCrit == idCrit)
+			{
+				cout << "S'ha deliminar això" << endl;
+				critPackets[i].pop_back();
+			}
+
+		}
+		if (critClock.getElapsedTime().asSeconds() >= 5)
+		{
+			if (critPackets->size() > 0)
+			{
+				SendStartGame(socket, clients, critPackets);
+			}
+		}
 	}
 	}
 }
@@ -292,17 +340,18 @@ int main()
 	}
 
 	vector<Client*> clients;
+	vector<critPack*> critPackets;
 	bool ServerRunning = true;
 
 	sf::Clock pingClock1;
 	sf::Clock pingClock2;
+
 
 	float counterPing1 = 0;
 	float counterPing2 = 0;
 
 	while (ServerRunning)
 	{
-
 		sf::Packet packet;
 		sf::IpAddress senderIP;
 		unsigned short senderPORT;
@@ -325,7 +374,7 @@ int main()
 				if (clients.size() == MAX_PLAYERS)
 				{
 					cout << "comença el game" << endl;
-					SendStartGame(&sock, clients);
+					SendStartGame(&sock, clients, &critPackets);
 					gamestate = GAME_STATE::GAME;
 				}
 			case GAME:
@@ -348,22 +397,13 @@ int main()
 				pingClock1.restart();
 				pingClock2.restart();
 
-
-				/*if (pingClock1.getElapsedTime().asMilliseconds() >= 1000)
-				{
-					counterPing1 = counterPing1 + 1;
-					pingClock1.restart();
-				}
-				else if (pingClock2.getElapsedTime().asMilliseconds() >= 1000)
-				{
-					counterPing2 = counterPing2 + 1;
-					pingClock2.restart();
-				}*/
+				checkMSG(packet, clients, &sock, senderIP, senderPORT, &counterPing1, &counterPing2, &critPackets);
 
 
-				checkMSG(packet, clients, &sock, senderIP, senderPORT, &counterPing1, &counterPing2);
 
+				
 				//printAll(clients);
+
 
 			case GAMEOVER:
 				break;

@@ -55,6 +55,12 @@ public:
 	int y;
 };
 
+struct critPack
+{
+	int ID;
+	sf::Packet packet;
+};
+
 struct Player
 {
 public:
@@ -65,6 +71,7 @@ public:
 	bool alive;
 	sf::Color Color;
 };
+
 
 
 //Overload send and recieve function for packet to recieve an enumerator

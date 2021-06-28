@@ -58,6 +58,19 @@ void SendBye(sf::UdpSocket *socket)
 	}
 }
 
+void SendACK(sf::UdpSocket *socket, int idPacket)
+{
+	sf::Packet packet;
+	CMD_TYPE CMD = CMD_TYPE::ACK;
+	packet << CMD << idPacket;
+	//cout << "Envio ACK de ID PACKET " << idPacket << endl;
+	sf::Socket::Status status = socket->send(packet, IP_SERVER, PORT_SERVER);
+	if (status != sf::Socket::Status::Done)
+	{
+		cout << "Error sending Bye to server" << endl;
+	}
+}
+
 void SendRestartGame(sf::UdpSocket *socket)
 {
 	sf::Packet packet;
@@ -99,6 +112,8 @@ void checkMSG(sf::Packet packet, std::vector<Player*> players,sf::UdpSocket*sock
 	CMD_TYPE CMD;
 	packet >> CMD;
 
+	
+
 	switch (CMD) {
 	case CMD_TYPE::CHALLENGE: {
 		
@@ -124,8 +139,10 @@ void checkMSG(sf::Packet packet, std::vector<Player*> players,sf::UdpSocket*sock
 	}
 	case CMD_TYPE::START: {
 
-		cout << "Have received iniate the game" << endl;
-		packet >> countdown;
+		int tempIdPacket;
+		packet >> countdown >> tempIdPacket;
+		cout << "Received a Packet ID " << tempIdPacket << endl;
+		SendACK(sock, tempIdPacket);
 		players[0]->x = 100;
 		players[0]->y = 100;
 		players[1]->x = 400; //S'afegeix la seva posicio x
@@ -148,6 +165,7 @@ void checkMSG(sf::Packet packet, std::vector<Player*> players,sf::UdpSocket*sock
 		packet >> ID >> x >> y;
 		players[ID - 1]->x = x;
 		players[ID - 1]->y = y;
+        //cout << "Receiving from player" << ID << " " << x << " and " << y << endl;
 		break;
 	}
 	case CMD_TYPE::PONG: {
