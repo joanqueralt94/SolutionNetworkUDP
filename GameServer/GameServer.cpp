@@ -161,11 +161,11 @@ void ChangeID(std::vector<Client*> clients, int id)
 }
 
 
-void checkMSG(sf::Packet packet, std::vector<Client*> clients, sf::UdpSocket* socket,sf::IpAddress senderIP, unsigned short senderPort) {
-
+void checkMSG(sf::Packet packet, std::vector<Client*> clients, sf::UdpSocket* socket,sf::IpAddress senderIP, unsigned short senderPort, float* counter1, float* counter2) {
+	
 	CMD_TYPE CMD;
 	packet >> CMD;
-
+	   
 	switch (CMD) {
 	case CMD_TYPE::HELLO: {
 		int ID;
@@ -246,6 +246,17 @@ void checkMSG(sf::Packet packet, std::vector<Client*> clients, sf::UdpSocket* so
 	case CMD_TYPE::PING: {
 		int ID;
 		packet >> ID;
+		
+		if (ID == 1)
+		{
+			cout << "RTT from Player 1 is: " << *counter1 << " ms" << endl;
+			*counter1 = 0;
+		}
+		else if (ID == 2)
+		{
+			cout << "RTT from Player 2 is: " << *counter2 << " ms" << endl;
+			*counter2 = 0;
+		}
 		//cout << "Rebo PING de Player " << ID << endl;
 		SendPong(socket, clients);
 		break;
@@ -282,6 +293,12 @@ int main()
 
 	vector<Client*> clients;
 	bool ServerRunning = true;
+
+	sf::Clock pingClock1;
+	sf::Clock pingClock2;
+
+	float counterPing1 = 0;
+	float counterPing2 = 0;
 
 	while (ServerRunning)
 	{
@@ -324,7 +341,28 @@ int main()
 					}
 
 				}
-				checkMSG(packet, clients, &sock, senderIP, senderPORT);
+
+				counterPing1 = pingClock1.getElapsedTime().asMilliseconds();
+				counterPing2 = pingClock2.getElapsedTime().asMilliseconds();
+
+				pingClock1.restart();
+				pingClock2.restart();
+
+
+				/*if (pingClock1.getElapsedTime().asMilliseconds() >= 1000)
+				{
+					counterPing1 = counterPing1 + 1;
+					pingClock1.restart();
+				}
+				else if (pingClock2.getElapsedTime().asMilliseconds() >= 1000)
+				{
+					counterPing2 = counterPing2 + 1;
+					pingClock2.restart();
+				}*/
+
+
+				checkMSG(packet, clients, &sock, senderIP, senderPORT, &counterPing1, &counterPing2);
+
 				//printAll(clients);
 
 			case GAMEOVER:
